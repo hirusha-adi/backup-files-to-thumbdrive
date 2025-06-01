@@ -1,8 +1,8 @@
 {
-    "destinations": [
-
-    ],
+    "destination": {
+        "path": "D:\\Desktop\\backup"
+    },
     "sources": [
-        
+        "D:\\Documents\\Mom"
     ]
 }
