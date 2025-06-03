@@ -1,18 +1,22 @@
-import json
-import os
-import subprocess
-from datetime import datetime
-import shutil
-import time
-import string
+# -*- coding: utf-8 -*-
+# Author: Hirusha Adikari
+# Source: https://github.com/hirusha-adi/backup-files-to-thumbdrive
+#
+
 import ctypes
-import sys
-import typing as t
-from logging.handlers import RotatingFileHandler
+import json
 import logging
+import os
+import shutil
+import string
+import sys
+import time
+import typing as t
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 # ----------------------------------------------------------------------------------
-#                                        Logs
+#                                      Logging
 # ----------------------------------------------------------------------------------
 
 os.makedirs(os.path.join(os.getcwd(), "logs"), exist_ok=True)
@@ -212,10 +216,8 @@ def main():
 
     try:
         os.system(" ".join(zip_command))
-        # result = subprocess.run(z_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        # print(result)
         logger.info(f"Temporary archive created at: {tmp_file_path}")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         logger.error(f"Error while creating archive: {e}")
         sys.exit()
 
