@@ -49,6 +49,7 @@ logger.addHandler(console_handler)
 # Prevent duplicate logs in interactive sessions
 logger.propagate = False
 
+logger.debug("Loggger initiated")
 
 # ----------------------------------------------------------------------------------
 #                          Type Hinting (for config.json)
@@ -76,6 +77,7 @@ class ConfigDict(t.TypedDict):
     destination: Destination
     sources: t.List[str]
 
+logger.debug("Type hints initiated")
 
 # ----------------------------------------------------------------------------------
 #                                 Load config.json
@@ -83,26 +85,59 @@ class ConfigDict(t.TypedDict):
 
 class Config:
     __config_path = os.path.join(os.getcwd(), "config.json")
-    with open(__config_path, "r") as f:
-        _data: ConfigDict = json.load(f)
+    
+    try:
+        with open(__config_path, "r") as f:
+            _data: ConfigDict = json.load(f)
+    except FileNotFoundError:
+        logger.error(f"Configuration file not found at '{__config_path}'.")
+        sys.exit()
+    except Exception as e:
+        logger.error(f"An unknown error happened when trying to open the configuration file: {e}")
+        sys.exit()
 
     __config: ConfigDict = _data
+    
     count: int = __config.get("count", 7)
+    if not isinstance(count, int):
+        logger.error("Please keep the `count` in the configuration file as an integer")
+    
     work_path: str = __config.get("work_path", os.path.join(os.getcwd(), "work"))
     os.makedirs(work_path, exist_ok=True)
+    logger.debug(f"Created directory at {work_path}")
 
     __destination: Destination = __config.get("destination")
+    
     destination_type: mode_type = __destination.get("type")
+    if not(destination_type in ("directory", "drive", "both")):
+        logger.error("Please keep the `type` in the configuration file as one of 'directory', 'drive' or 'both'")
+        sys.exit()
 
     _directory_config: DirectoryConfig = __destination.get("directory_config")
     directory_config_ouput_path: str = _directory_config.get("output_path")
 
     _drive_config: DriveConfig = __destination.get("drive_config")
-    drive_config_drive_name: str = _drive_config.get("drive_name")
     drive_config_sub_directory: str = _drive_config.get("sub_directory")
 
+    # We are checking for the volume label, not the volume GUI path or drive letter
+    #   If the drive is FAT/FAT32, max length for volume label is 11 characters
+    #   If the drive is NTFS, max length for volume label is 32 characters
+    # I set the max lenth as 32 to make it work on the best case scenario
+    # This hopefull wont be any major issue
+    drive_config_drive_name: str = _drive_config.get("drive_name")
+    if len(drive_config_drive_name) >= 32:
+        logger.error("Please keep the `drive_name` in the configuration file as less than 32 characters")
+        
     sources: t.List[str] = __config.get("sources")
+    if not isinstance(sources, list):
+        logger.error("Please keep the `sources` in the configuration file as a list of strings")
+        sys.exit()
+        
+    if len(sources) == 0:
+        logger.error("Nothing to back up")
+        sys.exit()
 
+logger.debug("Loaded and validated the configuration successfully.")
 
 # ----------------------------------------------------------------------------------
 #                                Support Functions
@@ -129,11 +164,31 @@ def is_drive_connected_with_label(target_label: str) -> t.Optional[str]:
                     ctypes.sizeof(file_system_name_buffer)
                 )
                 if result and volume_name_buffer.value == target_label:
+                    logger.info(f"Found drive with label: {target_label} at {drive}")
                     return drive
+                else:
+                    logger.debug(f"Drive path found at {drive} but with label: {volume_name_buffer.value}")
             except Exception as e:
-                print(f"[DEBUG] Failed to get volume information for drive {drive}: {e}")
+                logger.debug(f"An error occured while trying to access drive: {drive} :- {e}")
                 continue
+        else:
+            logger.debug(f"Drive path does not exist at: {drive}")
     return None
+
+def copy_with_retry(src: str, dst: str, retries: t.Optional[int] = 5, delay: t.Optional[int] = 1):
+    for _ in range(retries):
+        try:
+            shutil.copy2(src, dst)
+            logger.info(f"Copied {src} to {dst}")
+            return
+        except PermissionError as e:
+            logger.error(f"PermissionError: {e}. Retrying in {delay} seconds...")
+            time.sleep(delay)
+    logger.error(f"Failed to copy {src} after {retries} retries.")
+
+# ----------------------------------------------------------------------------------
+#                                 Backup Methods
+# ----------------------------------------------------------------------------------
 
 
 # ----------------------------------------------------------------------------------
@@ -143,21 +198,26 @@ def is_drive_connected_with_label(target_label: str) -> t.Optional[str]:
 def main():
     tools_7z_exe = os.path.join("tools", "7za.exe")
     if not os.path.exists(tools_7z_exe):
-        print("❌ 7-Zip tool not found:", tools_7z_exe)
-        sys.exit(1)
+        logger.error("7-zip binary (7za.exe) not found at '.\\tools\\7za.exe'")
+        sys.exit()
 
     archive_file_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".7z"
     tmp_file_path = os.path.join(Config.work_path, archive_file_name)
-
+    
+    logger.info(f"Archive name: {tmp_file_path}")
+    logger.debug(f"Temporary archive will be made at: {tmp_file_path}")
+    
     zip_command = [tools_7z_exe, "a", tmp_file_path] + Config.sources
+    logger.info(f"Running command: {' '.join(zip_command)}")
 
     try:
         os.system(" ".join(zip_command))
         # result = subprocess.run(z_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         # print(result)
-        print("✅ Archive created locally:", tmp_file_path)
+        logger.info(f"Temporary archive created at: {tmp_file_path}")
     except subprocess.CalledProcessError as e:
-        print("❌ Error while creating archive:", e.stderr)
+        logger.error(f"Error while creating archive: {e}")
+        sys.exit()
 
     # Handle destination
     if Config.destination_type == "directory":
@@ -165,43 +225,43 @@ def main():
             os.makedirs(Config.directory_config_ouput_path, exist_ok=True)
             final_path = os.path.join(
                 Config.directory_config_ouput_path, archive_file_name)
-
-            # TODO: write a copy with retry later
-            shutil.copy2(tmp_file_path, final_path)
-
-            print("✅ Archive copied to:", final_path)
+            copy_with_retry(src=tmp_file_path, dst=final_path, retries=5, delay=1)
+            logger.info(f"Archive copied to: {final_path}")
         except Exception as e:
-            print(f"❌ Failed to copy to directory destination: {e}")
-            sys.exit(1)
+            logger.error(f"Failed to copy temporary archive to target destination directory: {e}")
+            sys.exit()
 
     elif Config.destination_type == "drive":
-        print(
-            f"🔄 Waiting for drive named '{Config.drive_config_drive_name}' to be connected...")
+        logger.info(f"Waiting for drive named '{Config.drive_config_drive_name}' to be connected...")
         while True:
-            drive_letter = is_drive_connected_with_label(
-                Config.drive_config_drive_name)
+            drive_letter = is_drive_connected_with_label(Config.drive_config_drive_name)
             if drive_letter:
                 backup_dir = os.path.join(drive_letter, os.path.join(
                     Config.drive_config_sub_directory))
                 try:
                     os.makedirs(backup_dir, exist_ok=True)
+                    logger.debug(f"Backup directory created at: {backup_dir} in USB drive.")
+                    
                     final_path = os.path.join(backup_dir, archive_file_name)
-                    shutil.copy2(tmp_file_path, final_path)
-                    print(f"✅ Archive copied to USB drive: {final_path}")
+                    copy_with_retry(src=tmp_file_path, dst=final_path, retries=5, delay=1)
+                    logger.info(f"Archive copied to USB drive: {final_path}")
                     break
                 except Exception as e:
                     print(f"❌ Failed to copy to drive: {e}")
                     time.sleep(10)  # Retry again
             else:
-                print("⌛ Drive not found yet. Retrying in 10 seconds...")
+                logger.warning(f"Drive with label {Config.drive_config_drive_name} not found yet. Retrying in 10 seconds...")
                 time.sleep(10)
+                
     elif Config.destination_type == "both":
-        print(f"❌ Unknown destination type: {Config.destination_type}")
-        sys.exit(1)
+        print(f"TODO")
+        sys.exit()
 
     else:
         print("[ERROR] Unknown destination type:", Config.destination_type)
-        sys.exit(1)
+        sys.exit()
+        
+    logger.info("All operations performed successfully!")
 
 
 if __name__ == "__main__":
