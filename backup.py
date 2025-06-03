@@ -8,6 +8,51 @@ import string
 import ctypes
 import sys
 import typing as t
+from logging.handlers import RotatingFileHandler
+import logging
+
+# ----------------------------------------------------------------------------------
+#                                        Logs
+# ----------------------------------------------------------------------------------
+
+os.makedirs(os.path.join(os.getcwd(), "logs"), exist_ok=True)
+
+# Timestamped log file name (e.g., logs/2025-06-03_18-45-00.log)
+log_filename = datetime.now().strftime("logs/%Y-%m-%d_%H-%M-%S.log")
+
+# Formating for logs
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+LOG_FORMAT = (
+    "[%(asctime)s] "
+    "[%(levelname)s] "
+    "[%(module)s:%(funcName)s:%(lineno)d] "
+    "[PID:%(process)d|TID:%(thread)d] "
+    "%(message)s"
+)
+
+# File handler with rotating log (optional)
+file_handler = RotatingFileHandler(log_filename, maxBytes=5*1024*1024, backupCount=3)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+console_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
+
+# Configure root logger
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Prevent duplicate logs in interactive sessions
+logger.propagate = False
+
+
+# ----------------------------------------------------------------------------------
+#                          Type Hinting (for config.json)
+# ----------------------------------------------------------------------------------
 
 class DirectoryConfig(t.TypedDict):
     output_path: str
@@ -17,9 +62,10 @@ class DriveConfig(t.TypedDict):
     drive_name: str
     sub_directory: str
 
+mode_type = t.Literal["directory", "drive", "both"]
 
 class Destination(t.TypedDict):
-    type: t.Literal["directory", "drive", "both"]
+    type: mode_type
     directory_config: DirectoryConfig
     drive_config: DriveConfig 
 
@@ -31,6 +77,10 @@ class ConfigDict(t.TypedDict):
     sources: t.List[str]
 
 
+# ----------------------------------------------------------------------------------
+#                                 Load config.json
+# ----------------------------------------------------------------------------------
+
 class Config:
     __config_path = os.path.join(os.getcwd(), "config.json")
     with open(__config_path, "r") as f:
@@ -38,12 +88,11 @@ class Config:
 
     __config: ConfigDict = _data
     count: int = __config.get("count", 7)
-    work_path: str = __config.get(
-        "work_path", os.path.join(os.getcwd(), "work"))
+    work_path: str = __config.get("work_path", os.path.join(os.getcwd(), "work"))
     os.makedirs(work_path, exist_ok=True)
 
     __destination: Destination = __config.get("destination")
-    destination_type: t.Literal["directory", "drive", "both"] = __destination.get("type")
+    destination_type: mode_type = __destination.get("type")
 
     _directory_config: DirectoryConfig = __destination.get("directory_config")
     directory_config_ouput_path: str = _directory_config.get("output_path")
@@ -54,6 +103,10 @@ class Config:
 
     sources: t.List[str] = __config.get("sources")
 
+
+# ----------------------------------------------------------------------------------
+#                                Support Functions
+# ----------------------------------------------------------------------------------
 
 def is_drive_connected_with_label(target_label: str) -> t.Optional[str]:
     """Check if a removable drive with the given volume label is connected"""
@@ -82,6 +135,10 @@ def is_drive_connected_with_label(target_label: str) -> t.Optional[str]:
                 continue
     return None
 
+
+# ----------------------------------------------------------------------------------
+#                                  Main Function
+# ----------------------------------------------------------------------------------
 
 def main():
     tools_7z_exe = os.path.join("tools", "7za.exe")
