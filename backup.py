@@ -149,6 +149,9 @@ logger.debug("Loaded and validated the configuration successfully.")
 
 def is_drive_connected_with_label(target_label: str) -> t.Optional[str]:
     """Check if a removable drive with the given volume label is connected"""
+    # this is complete AI slop
+    # i have no idea about windll or any low level windows interface
+    # oh gosh i should learn more
     for letter in string.ascii_uppercase:
         drive = f"{letter}:\\"
         if os.path.exists(drive):
@@ -200,6 +203,10 @@ def copy_with_retry(src: str, dst: str, retries: t.Optional[int] = 5, delay: t.O
 # ----------------------------------------------------------------------------------
 
 def main():
+    
+    # Zip the files
+    # ------------------------------------------------------------------------------
+    
     tools_7z_exe = os.path.join("tools", "7za.exe")
     if not os.path.exists(tools_7z_exe):
         logger.error("7-zip binary (7za.exe) not found at '.\\tools\\7za.exe'")
@@ -221,7 +228,9 @@ def main():
         logger.error(f"Error while creating archive: {e}")
         sys.exit()
 
-    # Handle destination
+    # Copy files based on model
+    # ------------------------------------------------------------------------------
+    
     if Config.destination_type == "directory":
         try:
             os.makedirs(Config.directory_config_ouput_path, exist_ok=True)
