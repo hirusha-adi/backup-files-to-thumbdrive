@@ -194,9 +194,43 @@ def copy_with_retry(src: str, dst: str, retries: t.Optional[int] = 5, delay: t.O
     logger.error(f"Failed to copy {src} after {retries} retries.")
 
 # ----------------------------------------------------------------------------------
-#                                 Backup Methods
+#                                  Backup Modes
 # ----------------------------------------------------------------------------------
 
+def run_mode_directory(tmp_file_path, archive_file_name):
+    try:
+        os.makedirs(Config.directory_config_ouput_path, exist_ok=True)
+        final_path = os.path.join(
+            Config.directory_config_ouput_path, archive_file_name)
+        copy_with_retry(src=tmp_file_path, dst=final_path, retries=5, delay=1)
+        logger.info(f"Archive copied to: {final_path}")
+    except Exception as e:
+        logger.error(f"Failed to copy temporary archive to target destination directory: {e}")
+        sys.exit()
+    logger.info("Successfully ran the directory mode")
+
+def run_mode_drive(tmp_file_path, archive_file_name):
+    logger.info(f"Waiting for drive named '{Config.drive_config_drive_name}' to be connected...")
+    while True:
+        drive_letter = is_drive_connected_with_label(Config.drive_config_drive_name)
+        if drive_letter:
+            backup_dir = os.path.join(drive_letter, os.path.join(
+                Config.drive_config_sub_directory))
+            try:
+                os.makedirs(backup_dir, exist_ok=True)
+                logger.debug(f"Backup directory created at: {backup_dir} in USB drive.")
+                
+                final_path = os.path.join(backup_dir, archive_file_name)
+                copy_with_retry(src=tmp_file_path, dst=final_path, retries=5, delay=1)
+                logger.info(f"Archive copied to USB drive: {final_path}")
+                break
+            except Exception as e:
+                logger.error(f"Failed to copy to drive: {e}")
+                time.sleep(10)  # Retry again
+        else:
+            logger.warning(f"Drive with label {Config.drive_config_drive_name} not found yet. Retrying in 10 seconds...")
+            time.sleep(10)
+    logger.info("Successfully ran the drive mode")
 
 # ----------------------------------------------------------------------------------
 #                                  Main Function
@@ -232,44 +266,19 @@ def main():
     # ------------------------------------------------------------------------------
     
     if Config.destination_type == "directory":
-        try:
-            os.makedirs(Config.directory_config_ouput_path, exist_ok=True)
-            final_path = os.path.join(
-                Config.directory_config_ouput_path, archive_file_name)
-            copy_with_retry(src=tmp_file_path, dst=final_path, retries=5, delay=1)
-            logger.info(f"Archive copied to: {final_path}")
-        except Exception as e:
-            logger.error(f"Failed to copy temporary archive to target destination directory: {e}")
-            sys.exit()
+        run_mode_directory(tmp_file_path=tmp_file_path, archive_file_name=archive_file_name)
+        
 
     elif Config.destination_type == "drive":
-        logger.info(f"Waiting for drive named '{Config.drive_config_drive_name}' to be connected...")
-        while True:
-            drive_letter = is_drive_connected_with_label(Config.drive_config_drive_name)
-            if drive_letter:
-                backup_dir = os.path.join(drive_letter, os.path.join(
-                    Config.drive_config_sub_directory))
-                try:
-                    os.makedirs(backup_dir, exist_ok=True)
-                    logger.debug(f"Backup directory created at: {backup_dir} in USB drive.")
-                    
-                    final_path = os.path.join(backup_dir, archive_file_name)
-                    copy_with_retry(src=tmp_file_path, dst=final_path, retries=5, delay=1)
-                    logger.info(f"Archive copied to USB drive: {final_path}")
-                    break
-                except Exception as e:
-                    logger.error(f"Failed to copy to drive: {e}")
-                    time.sleep(10)  # Retry again
-            else:
-                logger.warning(f"Drive with label {Config.drive_config_drive_name} not found yet. Retrying in 10 seconds...")
-                time.sleep(10)
+        run_mode_drive(tmp_file_path=tmp_file_path, archive_file_name=archive_file_name)
                 
     elif Config.destination_type == "both":
-        print(f"TODO")
-        sys.exit()
-
+        run_mode_directory(tmp_file_path=tmp_file_path, archive_file_name=archive_file_name)
+        run_mode_drive(tmp_file_path=tmp_file_path, archive_file_name=archive_file_name)
+        logger.info("Successfully ran both modes")
+        
     else:
-        print("[ERROR] Unknown destination type:", Config.destination_type)
+        logger.error("Unknown destination type:", Config.destination_type)
         sys.exit()
         
     logger.info("All operations performed successfully!")
