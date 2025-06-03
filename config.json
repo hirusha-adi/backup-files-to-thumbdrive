@@ -1,10 +1,17 @@
 {
     "count": 3,
+    "work_path": ".\\work",
     "destination": {
         "type": "drive",
-        "value": "MOH AMBANPO"
+        "directory_config": {
+            "output_path": "\\"
+        },
+        "drive_config": {
+            "drive_name": "KINGSTON",
+            "sub_directory": "Backups\\OfficePC"
+        }
     },
     "sources": [
-        "D:\\Documents\\Mom"
+        "F:\\Documents\\Hacking\\Reported\\Report-Ajantha-Sir-1"
     ]
 }

@@ -7,8 +7,55 @@ import time
 import string
 import ctypes
 import sys
+import typing as t
 
-def is_drive_connected_with_label(target_label):
+class DirectoryConfig(t.TypedDict):
+    output_path: str
+
+
+class DriveConfig(t.TypedDict):
+    drive_name: str
+    sub_directory: str
+
+
+class Destination(t.TypedDict):
+    type: t.Literal["directory", "drive", "both"]
+    directory_config: DirectoryConfig
+    drive_config: DriveConfig 
+
+
+class ConfigDict(t.TypedDict):
+    count: int
+    work_path: str
+    destination: Destination
+    sources: t.List[str]
+
+
+class Config:
+    __config_path = os.path.join(os.getcwd(), "config.json")
+    with open(__config_path, "r") as f:
+        _data: ConfigDict = json.load(f)
+
+    __config: ConfigDict = _data
+    count: int = __config.get("count", 7)
+    work_path: str = __config.get(
+        "work_path", os.path.join(os.getcwd(), "work"))
+    os.makedirs(work_path, exist_ok=True)
+
+    __destination: Destination = __config.get("destination")
+    destination_type: t.Literal["directory", "drive", "both"] = __destination.get("type")
+
+    _directory_config: DirectoryConfig = __destination.get("directory_config")
+    directory_config_ouput_path: str = _directory_config.get("output_path")
+
+    _drive_config: DriveConfig = __destination.get("drive_config")
+    drive_config_drive_name: str = _drive_config.get("drive_name")
+    drive_config_sub_directory: str = _drive_config.get("sub_directory")
+
+    sources: t.List[str] = __config.get("sources")
+
+
+def is_drive_connected_with_label(target_label: str) -> t.Optional[str]:
     """Check if a removable drive with the given volume label is connected"""
     for letter in string.ascii_uppercase:
         drive = f"{letter}:\\"
@@ -31,67 +78,58 @@ def is_drive_connected_with_label(target_label):
                 if result and volume_name_buffer.value == target_label:
                     return drive
             except Exception as e:
+                print(f"[DEBUG] Failed to get volume information for drive {drive}: {e}")
                 continue
     return None
 
 
 def main():
-    # Load config
-    try:
-        with open("config.json", "r") as f:
-            config = json.load(f)
-    except Exception as e:
-        print(f"Failed to load config.json: {e}")
+    tools_7z_exe = os.path.join("tools", "7za.exe")
+    if not os.path.exists(tools_7z_exe):
+        print("❌ 7-Zip tool not found:", tools_7z_exe)
         sys.exit(1)
 
-    destination_type = config["destination"].get("type")
-    destination_value = config["destination"].get("value")
-    sources = config.get("sources", [])
+    archive_file_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".7z"
+    tmp_file_path = os.path.join(Config.work_path, archive_file_name)
 
-    if not sources:
-        print("No sources provided in config.")
-        sys.exit(1)
-
-    seven_zip_exe = "./tools/7za.exe"
-    temp_dir = "./work"
-    os.makedirs(temp_dir, exist_ok=True)
-
-    # Generate archive filename
-    archive_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".7z"
-    temp_archive_path = os.path.join(temp_dir, archive_name)
-
-    # Build 7za command
-    cmd = [seven_zip_exe, "a", temp_archive_path] + sources
+    zip_command = [tools_7z_exe, "a", tmp_file_path] + Config.sources
 
     try:
-        result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        print("✅ Archive created locally:", temp_archive_path)
+        os.system(" ".join(zip_command))
+        # result = subprocess.run(z_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # print(result)
+        print("✅ Archive created locally:", tmp_file_path)
     except subprocess.CalledProcessError as e:
-        print("❌ Error while creating archive:")
-        print(e.stderr)
-        sys.exit(1)
+        print("❌ Error while creating archive:", e.stderr)
 
     # Handle destination
-    if destination_type == "directory":
+    if Config.destination_type == "directory":
         try:
-            os.makedirs(destination_value, exist_ok=True)
-            final_path = os.path.join(destination_value, archive_name)
-            shutil.copy2(temp_archive_path, final_path)
+            os.makedirs(Config.directory_config_ouput_path, exist_ok=True)
+            final_path = os.path.join(
+                Config.directory_config_ouput_path, archive_file_name)
+
+            # TODO: write a copy with retry later
+            shutil.copy2(tmp_file_path, final_path)
+
             print("✅ Archive copied to:", final_path)
         except Exception as e:
             print(f"❌ Failed to copy to directory destination: {e}")
             sys.exit(1)
 
-    elif destination_type == "drive":
-        print("🔄 Waiting for drive named 'MOH AMBANPO' to be connected...")
+    elif Config.destination_type == "drive":
+        print(
+            f"🔄 Waiting for drive named '{Config.drive_config_drive_name}' to be connected...")
         while True:
-            drive_letter = is_drive_connected_with_label("MOH AMBANPO")
+            drive_letter = is_drive_connected_with_label(
+                Config.drive_config_drive_name)
             if drive_letter:
-                backup_dir = os.path.join(drive_letter, "backups")
+                backup_dir = os.path.join(drive_letter, os.path.join(
+                    Config.drive_config_sub_directory))
                 try:
                     os.makedirs(backup_dir, exist_ok=True)
-                    final_path = os.path.join(backup_dir, archive_name)
-                    shutil.copy2(temp_archive_path, final_path)
+                    final_path = os.path.join(backup_dir, archive_file_name)
+                    shutil.copy2(tmp_file_path, final_path)
                     print(f"✅ Archive copied to USB drive: {final_path}")
                     break
                 except Exception as e:
@@ -100,8 +138,12 @@ def main():
             else:
                 print("⌛ Drive not found yet. Retrying in 10 seconds...")
                 time.sleep(10)
+    elif Config.destination_type == "both":
+        print(f"❌ Unknown destination type: {Config.destination_type}")
+        sys.exit(1)
+
     else:
-        print(f"❌ Unknown destination type: {destination_type}")
+        print("[ERROR] Unknown destination type:", Config.destination_type)
         sys.exit(1)
 
 
