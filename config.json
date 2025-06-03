@@ -2,9 +2,9 @@
     "count": 3,
     "work_path": ".\\work",
     "destination": {
-        "type": "drive",
+        "type": "both",
         "directory_config": {
-            "output_path": "\\"
+            "output_path": "F:\\Desktop\\"
         },
         "drive_config": {
             "drive_name": "KINGSTON",
@@ -12,6 +12,6 @@
         }
     },
     "sources": [
-        "F:\\Documents\\Hacking\\Reported\\Report-Ajantha-Sir-1"
+        "F:\\Documents\\Important"
     ]
 }
