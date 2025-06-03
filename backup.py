@@ -258,7 +258,7 @@ def main():
                     logger.info(f"Archive copied to USB drive: {final_path}")
                     break
                 except Exception as e:
-                    print(f"❌ Failed to copy to drive: {e}")
+                    logger.error(f"Failed to copy to drive: {e}")
                     time.sleep(10)  # Retry again
             else:
                 logger.warning(f"Drive with label {Config.drive_config_drive_name} not found yet. Retrying in 10 seconds...")
