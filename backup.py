@@ -103,8 +103,6 @@ class Config:
     __config: ConfigDict = _data
     
     count: int = __config.get("count", 7)
-    if not isinstance(count, int):
-        logger.error("Please keep the `count` in the configuration file as an integer")
     
     work_path: str = __config.get("work_path", os.path.join(os.getcwd(), "work"))
     os.makedirs(work_path, exist_ok=True)
@@ -133,9 +131,6 @@ class Config:
         logger.error("Please keep the `drive_name` in the configuration file as less than 32 characters")
         
     sources: t.List[str] = __config.get("sources")
-    if not isinstance(sources, list):
-        logger.error("Please keep the `sources` in the configuration file as a list of strings")
-        sys.exit()
         
     if len(sources) == 0:
         logger.error("Nothing to back up")
@@ -183,14 +178,17 @@ def is_drive_connected_with_label(target_label: str) -> t.Optional[str]:
     return None
 
 def copy_with_retry(src: str, dst: str, retries: t.Optional[int] = 5, delay: t.Optional[int] = 1):
-    for _ in range(retries):
-        try:
-            shutil.copy2(src, dst)
-            logger.info(f"Copied {src} to {dst}")
-            return
-        except PermissionError as e:
-            logger.error(f"PermissionError: {e}. Retrying in {delay} seconds...")
-            time.sleep(delay)
+    if retries and delay:
+        for _ in range(retries):
+            try:
+                shutil.copy2(src, dst)
+                logger.info(f"Copied {src} to {dst}")
+                return
+            except PermissionError as e:
+                logger.error(f"PermissionError: {e}. Retrying in {delay} seconds...")
+                time.sleep(delay)
+    else:
+        logger.error(f"Invalid arguments for copy_with_retry: {src} {dst} {retries} {delay} in copy_with_retry()")
     logger.error(f"Failed to copy {src} after {retries} retries.")
 
 def rotate_backups(directory: str, max_count: int):
@@ -216,7 +214,7 @@ def rotate_backups(directory: str, max_count: int):
 #                                  Backup Modes
 # ----------------------------------------------------------------------------------
 
-def run_mode_directory(tmp_file_path, archive_file_name):
+def run_mode_directory(tmp_file_path: str, archive_file_name: str):
     try:
         os.makedirs(Config.directory_config_ouput_path, exist_ok=True)
         final_path = os.path.join(Config.directory_config_ouput_path, archive_file_name)
@@ -228,7 +226,7 @@ def run_mode_directory(tmp_file_path, archive_file_name):
         sys.exit()
     logger.info("Successfully ran the directory mode")
 
-def run_mode_drive(tmp_file_path, archive_file_name):
+def run_mode_drive(tmp_file_path: str, archive_file_name: str):
     logger.info(f"Waiting for drive named '{Config.drive_config_drive_name}' to be connected...")
     while True:
         drive_letter = is_drive_connected_with_label(Config.drive_config_drive_name)
