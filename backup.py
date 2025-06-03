@@ -193,6 +193,25 @@ def copy_with_retry(src: str, dst: str, retries: t.Optional[int] = 5, delay: t.O
             time.sleep(delay)
     logger.error(f"Failed to copy {src} after {retries} retries.")
 
+def rotate_backups(directory: str, max_count: int):
+    try:
+        files = [
+            os.path.join(directory, f)
+            for f in os.listdir(directory)
+            if f.endswith(".7z") and os.path.isfile(os.path.join(directory, f))
+        ]
+        files.sort(key=lambda x: os.path.getctime(x))
+        if len(files) > max_count:
+            for f in files[:-max_count]:
+                try:
+                    os.remove(f)
+                    logger.info(f"Removed old backup: {f}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete old backup {f}: {e}")
+    except Exception as e:
+        logger.warning(f"Failed to rotate backups in {directory}: {e}")
+
+
 # ----------------------------------------------------------------------------------
 #                                  Backup Modes
 # ----------------------------------------------------------------------------------
@@ -200,9 +219,9 @@ def copy_with_retry(src: str, dst: str, retries: t.Optional[int] = 5, delay: t.O
 def run_mode_directory(tmp_file_path, archive_file_name):
     try:
         os.makedirs(Config.directory_config_ouput_path, exist_ok=True)
-        final_path = os.path.join(
-            Config.directory_config_ouput_path, archive_file_name)
+        final_path = os.path.join(Config.directory_config_ouput_path, archive_file_name)
         copy_with_retry(src=tmp_file_path, dst=final_path, retries=5, delay=1)
+        rotate_backups(Config.directory_config_ouput_path, Config.count)
         logger.info(f"Archive copied to: {final_path}")
     except Exception as e:
         logger.error(f"Failed to copy temporary archive to target destination directory: {e}")
@@ -214,19 +233,19 @@ def run_mode_drive(tmp_file_path, archive_file_name):
     while True:
         drive_letter = is_drive_connected_with_label(Config.drive_config_drive_name)
         if drive_letter:
-            backup_dir = os.path.join(drive_letter, os.path.join(
-                Config.drive_config_sub_directory))
+            backup_dir = os.path.join(drive_letter, Config.drive_config_sub_directory)
             try:
                 os.makedirs(backup_dir, exist_ok=True)
                 logger.debug(f"Backup directory created at: {backup_dir} in USB drive.")
                 
                 final_path = os.path.join(backup_dir, archive_file_name)
                 copy_with_retry(src=tmp_file_path, dst=final_path, retries=5, delay=1)
+                rotate_backups(backup_dir, Config.count)
                 logger.info(f"Archive copied to USB drive: {final_path}")
                 break
             except Exception as e:
-                logger.error(f"Failed to copy to drive: {e}")
-                time.sleep(10)  # Retry again
+                logger.error(f"Failed to copy to drive: {e}. Retrying in 10 seconds...")
+                time.sleep(10)
         else:
             logger.warning(f"Drive with label {Config.drive_config_drive_name} not found yet. Retrying in 10 seconds...")
             time.sleep(10)
